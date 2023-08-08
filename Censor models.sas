@@ -1,5 +1,3 @@
-LIBNAME Model '\\ka0089.loods2.org\Actuariaat\SAS Data\DennisS\PhD\Modellen A4';
-
 PROC SQL NOPRINT;
 	SELECT MAX(dag90)
 	INTO :maxTimePoint
@@ -9,7 +7,7 @@ PROC SQL NOPRINT;
 	INTO :TimePoints SEPARATED BY " "
 	FROM PhD.COMPLETESET_90DAGEN
 	WHERE dag90 > 365 /*Patients have to be followed for at least one year*/
-		AND dag90 < &maxTimePoint. /*At the end everybody will be censored*/
+		AND dag90 < 3000 /*At the end everybody will be censored*/
 ;
 QUIT;
 
@@ -17,50 +15,47 @@ QUIT;
 %macro modellen_censor();
 
 %DO i = 1 %TO %SYSFUNC(COUNTW(&TimePoints.));
-%LET TimePoint = %SCAN(&TimePoints,&i.);
 
-PROC SQL;
-	CREATE TABLE ModelData AS
-	SELECT CASE WHEN INTCK('day',datum,MDY(12,31,jaar)) < 90 THEN 1 ELSE 0 END as EndOfYearIndicator
-			,leeftijd_index
-			,geslacht
-			,Diabetes
-			,COPD
-			,Reuma
-			,Dialyse
-			,Depressie
-			,CVE
-			,Hoofdverzekerde_JN
-			,AV_indicator
-			,TV_indicator
-			,ER_indicator
-			,Herverzekering_ER
-			,ER_Regeling
-			,INCASSO_FREQ_OMS
-			,BN_INKOMEN_OMS
-			,BN_Sociale_klasse_oms
-			,bn_opleiding_oms
-			,ER_verpl_cum
-			,FKG,DKG,HKG
-			,Censor
-	FROM phd.COMPLETESET_90DAGEN
-	WHERE dag90 = &TimePoint.
-			AND CVE = 0 /*Patients should not have a CVE*/
-			AND Death = 0 /*Patients should not be dead*/
+DATA Modeldata;
+	SET PhD.COMPLETESET_90DAGEN;
+	BY zcl_rel_nr;
+
+	YearPassed = MIN(INTCK('day',MDY(1,1,YEAR(datum)),datum) / 365,1);
+	IF dag90 = 2970 THEN Censor = 1;
+RUN;
+
+
+%LET TimePoint = %SCAN(&TimePoints,&i.);
+ODS EXCLUDE ALL;
+PROC HPLOGISTIC DATA=WORK.ModelData(WHERE=(dag90 = &TimePoint. AND Switch = 0 AND CVE = 0 AND Death = 0)) NAMELEN=32;
+	CLASS geslacht BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS;
+	MODEL Censor(event='1')= leeftijd_index Diabetes COPD Reuma /*Dialyse*/ Depressie AV_INDICATOR TV_INDICATOR ER_INDICATOR HERVERZEKERING_ER Paying FKG DKG HKG geslacht ER_REGELING BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS
+		/ LINK=LOGIT;
+	SELECTION METHOD=BACKWARD(CHOOSE=SBC SELECT=SBC STOP=SBC);
+	ODS OUTPUT ParameterEstimates=PE;
+RUN;
+
+ODS EXCLUDE NONE;
+PROC SQL NOPRINT;
+	SELECT DISTINCT Effect
+	INTO :Effects SEPARATED BY " "
+	FROM PE
+	WHERE Effect NE 'Intercept'
 ;
 QUIT;
 
-PROC LOGISTIC DATA=WORK.ModelData
-		PLOTS(ONLY)=NONE;
+PROC LOGISTIC DATA=WORK.ModelData(WHERE=(dag90 = &TimePoint. AND Switch = 0 AND CVE = 0 AND Death = 0)) NOPRINT PLOTS(ONLY)=NONE;
 	;
-	CLASS geslacht 	(PARAM=EFFECT) ER_REGELING 	(PARAM=EFFECT) INCASSO_FREQ_OMS 	(PARAM=EFFECT) BN_INKOMEN_OMS 	(PARAM=EFFECT) BN_SOCIALE_KLASSE_OMS 	(PARAM=EFFECT) BN_OPLEIDING_OMS 	(PARAM=EFFECT);
-	MODEL Censor(event='1')= leeftijd_index Diabetes COPD Reuma Dialyse Depressie HOOFDVERZEKERDE_JN AV_INDICATOR TV_INDICATOR ER_INDICATOR HERVERZEKERING_ER ER_verpl_cum FKG DKG HKG geslacht ER_REGELING INCASSO_FREQ_OMS BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS		/
-		SELECTION=NONE
-		LINK=LOGIT
+	CLASS geslacht BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS;
+	MODEL Censor(event='1')= &Effects. / LINK=LOGIT
 	;
 	STORE OUT=Model.Censor_&TimePoint.;
 RUN;
 %END;
+
+PROC DATASETS NOLIST LIB=WORK;
+	DELETE Modeldata;
+QUIT;
 %mend;
 
 %modellen_censor();

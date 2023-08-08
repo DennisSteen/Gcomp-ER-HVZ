@@ -9,7 +9,7 @@ PROC SQL NOPRINT;
 	INTO :TimePoints SEPARATED BY " "
 	FROM PhD.COMPLETESET_90DAGEN
 	WHERE dag90 > 365 /*Patients have to be followd for at least a year*/
-		AND dag90 < &maxTimePoint. /*At the end of the database all patients will be censored*/
+		AND dag90 < 3000 /*At the end of the database all patients will be censored*/
 ;
 QUIT;
 
@@ -17,51 +17,44 @@ QUIT;
 
 %macro modellen_death();
 
+DATA Modeldata;
+	SET PhD.COMPLETESET_90DAGEN;
+	BY zcl_rel_nr;
+
+	YearPassed = MIN(INTCK('day',MDY(1,1,YEAR(datum)),datum) / 365,1);
+RUN;
+
 %DO i = 1 %TO %SYSFUNC(COUNTW(&TimePoints.));
 %LET TimePoint = %SCAN(&TimePoints,&i.);
 
-PROC SQL;
-	CREATE TABLE ModelData AS
-	SELECT leeftijd_index
-			,geslacht
-			,Diabetes
-			,COPD
-			,Reuma
-			,Dialyse
-			,Depressie
-			,CVE
-			,Hoofdverzekerde_JN
-			,AV_indicator
-			,TV_indicator
-			,ER_indicator
-			,Herverzekering_ER
-			,ER_Regeling
-			,INCASSO_FREQ_OMS
-			,BN_INKOMEN_OMS
-			,BN_Sociale_klasse_oms
-			,bn_opleiding_oms
-			,ER_verpl_cum
-			,FKG,DKG,HKG
-			,Death
-			,user_C03AA, user_C03DA, user_C07A, user_C08, user_C09A, user_C09C, user_C10AA, user_C10AB, user_C10AC, user_C10AD, user_C10AX
-	FROM phd.COMPLETESET_90DAGEN
-	WHERE dag90 = &TimePoint.
-			AND CVE = 0 /*Patients should not have a CVE*/
+PROC HPLOGISTIC DATA=WORK.ModelData(WHERE=(dag90=&TimePoint. AND Switch = 0 AND CVE=0)) NAMELEN=32;
+	CLASS geslacht BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS;
+	MODEL Death(event='1')= user_C03AA user_C03DA user_C07A user_C08 user_C09A user_C09C user_C10AA user_C10AZ 
+							leeftijd_index Diabetes COPD Reuma Depressie CVE AV_INDICATOR TV_INDICATOR ER_INDICATOR HERVERZEKERING_ER Paying FKG DKG HKG geslacht ER_REGELING BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS	
+		/ LINK=LOGIT;
+	SELECTION METHOD=BACKWARD(CHOOSE=SBC SELECT=SBC STOP=SBC);
+	ODS OUTPUT ParameterEstimates=PE;
+RUN;
+
+ODS EXCLUDE NONE;
+PROC SQL NOPRINT;
+	SELECT DISTINCT effect
+	INTO :effects SEPARATED BY " "
+	FROM PE
+	WHERE effect NE 'Intercept'
 ;
 QUIT;
 
-PROC LOGISTIC DATA=WORK.ModelData
-		PLOTS(ONLY)=NONE;
-	;
-	CLASS geslacht 	(PARAM=EFFECT) ER_REGELING 	(PARAM=EFFECT) INCASSO_FREQ_OMS 	(PARAM=EFFECT) BN_INKOMEN_OMS 	(PARAM=EFFECT) BN_SOCIALE_KLASSE_OMS 	(PARAM=EFFECT) BN_OPLEIDING_OMS 	(PARAM=EFFECT);
-	MODEL Death(event='1')= user_C03AA user_C03DA user_C07A user_C08 user_C09A user_C09C user_C10AA user_C10AB user_C10AC user_C10AD user_C10AX 
-							leeftijd_index Diabetes COPD Reuma Dialyse Depressie CVE HOOFDVERZEKERDE_JN AV_INDICATOR TV_INDICATOR ER_INDICATOR HERVERZEKERING_ER ER_verpl_cum FKG DKG HKG geslacht ER_REGELING INCASSO_FREQ_OMS BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS		/
-		SELECTION=NONE
-		LINK=LOGIT
-	;
+PROC LOGISTIC DATA=WORK.ModelData(WHERE=(dag90=&TimePoint. AND Switch = 0 AND CVE=0)) NOPRINT PLOTS(ONLY)=NONE;
+	CLASS geslacht BN_INKOMEN_OMS BN_SOCIALE_KLASSE_OMS BN_OPLEIDING_OMS;
+	MODEL Death(event='1')= &effects. / LINK=LOGIT;
 	STORE OUT=Model.Death_&TimePoint.;
 RUN;
 %END;
+
+PROC DATASETS NOLIST LIB=WORK;
+	DELETE Modeldata;
+QUIT;
 %mend;
 
 %modellen_death();
