@@ -17,7 +17,7 @@ Medications <- c("C03AA","C03DA","C07A","C08","C09A","C09C","C10AA","C10AZ")
 source(paste0(ScriptLocation,"ExtraSuperLearners.r"))
 SLvector <- c("SL.glmnet","SL.glmnet.ridge","SL.randomForest","SL.stepAIC","SL.gam2")
 
-#source(paste0(ScriptLocation,"SwitchModels.r"))
+source(paste0(ScriptLocation,"SwitchModels.r"))
 source(paste0(ScriptLocation,"CostGroupModels.r"))
 source(paste0(ScriptLocation,"PolisModels.r"))
 source(paste0(ScriptLocation,"ComorbiditieModels.r"))
