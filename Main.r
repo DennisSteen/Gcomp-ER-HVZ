@@ -2,8 +2,8 @@ library(DBI)
 library(odbc)
 library(dplyr)
 library(SuperLearner)
-con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server=ka0327.loods2.org;Trusted_Connection=True;Database=SBX210", timeout = 10)
-ScriptLocation <- "L:/afdelingen/Actuariaat_Business/DennisS/PhD/A4/Scripts/R/"
+con <- dbConnect(odbc::odbc(), .connection_string = "", timeout = 10)
+ScriptLocation <- ""
 
 CompleteDataset <- tbl(con, "DS_PhD_CompleteSetA4_90")
 
