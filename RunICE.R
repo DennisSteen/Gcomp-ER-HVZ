@@ -93,10 +93,10 @@ runICE <- function(dataSet, SLvector, ReplaceColumnNames = NA, ReplaceColumnValu
       
       ##Create model
         assign(paste("model_CVE_",t,sep=""),SuperLearner(Y,ModelDataX,family=binomial(),SL.library = SLvector)) ##Step 1
-      # saveRDS(get(paste("model_CVE_",t,sep="")),file=paste("L:/afdelingen/Actuariaat_Business/DennisS/PhD/A4/Models/model_CVE_",t,".rda",sep=""))
+       saveRDS(get(paste("model_CVE_",t,sep="")),file=paste("L:/afdelingen/Actuariaat_Business/DennisS/PhD/A4/Models/model_CVE_",t,".rda",sep=""))
       
       ## Predict values for t - 1 
-      NewDataSet$CVE[SS] <- rbinom(sum(SS),size = 1,p = pmax(predict(get(paste("model_CVE_",t,sep="")),newdata = NewDataSet[SS,],type="response")$pred,NewDataSet[SS,"CVE"])) ##Step 2
+      NewDataSet$CVE[SS] <- pmax(predict(get(paste("model_CVE_",t,sep="")),newdata = NewDataSet[SS,],type="response")$pred,NewDataSet[SS,"CVE"]) ##Step 2
       
       ##Delete models and data from workspace
       rm(list = setdiff(ls(pattern = "^model_"),lsf.str()))
@@ -105,20 +105,20 @@ runICE <- function(dataSet, SLvector, ReplaceColumnNames = NA, ReplaceColumnValu
       setTxtProgressBar(pb, (B - (t-90)/max(TimePoints)) / BootStraps )
     }
     
-    print(Preds)
     Preds[B] <- (NewDataSet %>% filter(dag90 == 90) %>% dplyr::select(CVE) %>% summarise(mean(CVE)))[[1]]
-    print(Preds)
   }
   
-  out <- c("Mean"=mean(Preds),"2.5% LB"=quantile(Preds,probs=0.025),"97.5% UB"=quantile(Preds,probs=0.975))
+  out <- c("Mean"=mean(Preds),quantile(Preds,probs=0.025),quantile(Preds,probs=0.975))
   
   close(pb)
   return(out)
 }
-runICE(CompleteDataset,c("SL.mean"),BootStraps=2)
+#runICE(CompleteDataset,c("SL.glmnet2"),BootStraps=1)
                          
-                         
-runICE(CompleteDataset,c("SL.glmnet","SL.glmnet.ridge","SL.gam2","SL.ranger"),BootStraps=500)
-runICE(CompleteDataset,c("SL.glmnet","SL.glmnet.ridge","SL.gam2","SL.ranger"),BootStraps=500
+start.time <- Sys.time()                         
+runICE(CompleteDataset,c("SL.glmnet2","SL.glmnet.ridge","SL.gam2","SL.glm"),BootStraps=1)
+runICE(CompleteDataset,c("SL.glmnet2","SL.glmnet.ridge","SL.gam2","SL.glm"),BootStraps=1
        ,c(paste("paying",Medications,"lag",sep="_"),paste("paying",Medications,sep="_"))
        ,c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))
+end.time <- Sys.time()
+end.time - start.time

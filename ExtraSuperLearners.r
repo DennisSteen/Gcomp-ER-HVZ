@@ -3,7 +3,7 @@ SL.gam2 <- function(...) {
 }
 
 SL.glmnet.ridge <- function(...){
-  SL.glmnet(..., alpha = 0)
+  SL.glmnet2(..., alpha = 0)
 }
 
 SL.stepGAM <- function (Y, X, newX, family, obsWeights, deg.gam = 2, cts.num = 8, direction = "forward",
@@ -45,5 +45,77 @@ SL.stepGAM <- function (Y, X, newX, family, obsWeights, deg.gam = 2, cts.num = 8
   fit <- list(object = fit.gam)
   out <- list(pred = pred, fit = fit)
   class(out$fit) <- c("SL.gam")
+  return(out)
+}
+
+SL.randomForest2 <- function (Y, X, newX, family, mtry = ifelse(family$family == 
+                                              "gaussian", max(floor(ncol(X)/3), 1), floor(sqrt(ncol(X)))), 
+          ntree = 1000, nodesize = ifelse(family$family == "gaussian", 
+                                          5, 1), maxnodes = NULL, importance = FALSE, ...) 
+{
+  if (family$family == "gaussian") {
+    fit.rf <- randomForest::randomForest(Y ~ ., data = X, 
+                                         ntree = ntree, xtest = newX, keep.forest = TRUE, 
+                                         mtry = mtry, nodesize = nodesize, maxnodes = maxnodes, 
+                                         importance = importance)
+    pred <- fit.rf$test$predicted
+    fit <- list(object = fit.rf)
+  }
+  if (family$family == "binomial") {
+    fit.rf <- randomForest::randomForest(y = Y, 
+                                         x = X, ntree = ntree, xtest = newX, keep.forest = TRUE, 
+                                         mtry = mtry, nodesize = nodesize, maxnodes = maxnodes, 
+                                         importance = importance)
+    pred <- fit.rf$test$predicted
+    fit <- list(object = fit.rf)
+  }
+  out <- list(pred = pred, fit = fit)
+  class(out$fit) <- c("SL.randomForest")
+  return(out)
+}
+
+SL.ranger2 <- function (Y, X, newX, family, obsWeights, num.trees = 500, mtry = floor(sqrt(ncol(X))), 
+          write.forest = TRUE, probability = family$family == "binomial", 
+          min.node.size = 5, replace = TRUE, sample.fraction = ifelse(replace, 
+                                                                                 1, 0.632), num.threads = 1, verbose = T, ...) 
+{
+  if (is.matrix(X)) {
+    X = data.frame(X)
+  }
+  fit <- ranger::ranger(`_Y` ~ ., data = cbind(`_Y` = Y, 
+                                               X), num.trees = num.trees, mtry = mtry, min.node.size = min.node.size, 
+                        replace = replace, sample.fraction = sample.fraction, 
+                        case.weights = obsWeights, write.forest = write.forest, 
+                        probability = probability, num.threads = num.threads, 
+                        verbose = verbose)
+  pred <- predict(fit, data = newX)$predictions
+  if (family$family == "binomial") {
+    pred = pred[, "1"]
+  }
+  fit <- list(object = fit, verbose = verbose)
+  class(fit) <- c("SL.ranger")
+  out <- list(pred = pred, fit = fit)
+  return(out)
+}
+
+SL.glmnet2 <- function (Y, X, newX, family, obsWeights, id, alpha = 1, nfolds = 10, 
+          nlambda = 100, useMin = TRUE, loss = "deviance", ...) 
+{
+  if (!is.matrix(X)) {
+    X <- model.matrix(~-1 + ., X)
+    newX <- model.matrix(~-1 + ., newX)
+  }
+  if(family$family == "binomial"){
+    Yc <- cbind(Y,rep(1,length(Y)))
+  }
+  fitCV <- glmnet::cv.glmnet(x = X, y = Yc, weights = obsWeights, 
+                             lambda = NULL, type.measure = loss, nfolds = nfolds, 
+                             family = family$family, alpha = alpha, nlambda = nlambda, 
+                             ...)
+  pred <- predict(fitCV, newx = newX, type = "response", 
+                  s = ifelse(useMin, "lambda.min", "lambda.1se"))
+  fit <- list(object = fitCV, useMin = useMin)
+  class(fit) <- "SL.glmnet"
+  out <- list(pred = pred, fit = fit)
   return(out)
 }
